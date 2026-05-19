@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     SMTP_FROM_EMAIL: str = "noreply@autoinvestor.ai"
     SMTP_FROM_NAME: str = "AutoInvestor"
+    SMTP_USE_TLS: bool = True
     NOTIFICATION_EMAIL: Optional[str] = None
 
     # ── Discord ──────────────────────────────────────────────────────────────────
@@ -57,10 +58,19 @@ class Settings(BaseSettings):
 
     # ── ML / Prediction ──────────────────────────────────────────────────────────
     MIN_CONFIDENCE_THRESHOLD: float = 65.0
+    MIN_CONFIDENCE_FOR_PRIMARY: float = 80.0
+    MIN_CONFIDENCE_FOR_SECONDARY: float = 70.0
     MIN_VOLUME_THRESHOLD: int = 500_000
     MIN_PRICE_THRESHOLD: float = 5.0
     MAX_PORTFOLIO_POSITIONS: int = 10
     MODEL_STORE_PATH: str = "./model_store"
+    RETRAIN_AFTER_N_PREDICTIONS: int = 50
+
+    # ── Portfolio / Risk ─────────────────────────────────────────────────────────
+    PORTFOLIO_INITIAL_CASH: float = 100_000.0
+    MAX_POSITION_SIZE_PCT: float = 20.0
+    MAX_SECTOR_CONCENTRATION_PCT: float = 40.0
+    DEFAULT_STOP_LOSS_PCT: float = 7.0
 
     # ── Market Hours (ET) ────────────────────────────────────────────────────────
     MARKET_OPEN_HOUR: int = 9

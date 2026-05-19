@@ -1,0 +1,177 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend — Python tests
+  # ---------------------------------------------------------------------------
+  backend-test:
+    name: Backend Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: autoinvestor_test
+          POSTGRES_USER: autoinvestor
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoinvestor -d autoinvestor_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://autoinvestor:test_password@localhost:5432/autoinvestor_test
+      POSTGRES_PASSWORD: test_password
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: ci-test-secret-key-at-least-32-characters-long
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 43200
+      ALPHA_VANTAGE_API_KEY: dummy
+      POLYGON_API_KEY: dummy
+      NEWS_API_KEY: dummy
+      FINNHUB_API_KEY: dummy
+      MIN_CONFIDENCE_THRESHOLD: 65
+      MIN_VOLUME_THRESHOLD: 500000
+      MIN_PRICE_THRESHOLD: 5.0
+      MAX_PREDICTIONS_PER_NIGHT: 10
+      USER_TRADING_STYLE: swing
+      MAX_HOLD_DAYS: 10
+      RISK_TOLERANCE: medium
+      LOG_LEVEL: WARNING
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Run linter
+        working-directory: backend
+        run: |
+          pip install ruff
+          ruff check app/
+
+      - name: Run tests
+        working-directory: backend
+        run: |
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.11'
+        with:
+          file: backend/coverage.xml
+          flags: backend
+          fail_ci_if_error: false
+
+  # ---------------------------------------------------------------------------
+  # Frontend — Node build + lint
+  # ---------------------------------------------------------------------------
+  frontend-test:
+    name: Frontend Build & Lint (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: ["20"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run linter
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build production bundle
+        working-directory: frontend
+        env:
+          VITE_API_URL: http://localhost:8000
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Docker — ensure images build successfully
+  # ---------------------------------------------------------------------------
+  docker-build:
+    name: Docker Image Build
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-test]
+
+    strategy:
+      matrix:
+        service: [backend, frontend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.service }} image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}
+          push: false
+          tags: autoinvestor-${{ matrix.service }}:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,53 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Launch AutoInvestor",
+      "type": "shell",
+      "command": "python",
+      "args": ["main.py"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": { "PYTHONPATH": "${workspaceFolder}" }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true,
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Build Frontend",
+      "type": "shell",
+      "command": "cd frontend && npm install && npm run build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "Reset Database",
+      "type": "shell",
+      "command": "rm -f autoinvestor.db && python main.py",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": { "PYTHONPATH": "${workspaceFolder}" }
+      },
+      "presentation": { "reveal": "always", "panel": "new" }
+    },
+    {
+      "label": "Run NASDAQ Scan Now",
+      "type": "shell",
+      "command": "python -c \"import asyncio; from app.services.prediction_engine import NightlyScanner; asyncio.run(NightlyScanner().run())\"",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": { "PYTHONPATH": "${workspaceFolder}" }
+      },
+      "presentation": { "reveal": "always", "panel": "shared" }
+    }
+  ]
+}

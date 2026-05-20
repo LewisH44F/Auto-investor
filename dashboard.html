@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoInvestor Intelligence System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            base: '#0a0e1a',
+            surface: '#0f1629',
+            panel: '#141c35',
+            border: '#1e2d4f',
+            gain: '#10b981',
+            loss: '#ef4444',
+            warn: '#f59e0b',
+            brand: '#3b82f6',
+          },
+          fontFamily: {
+            mono: ['JetBrains Mono', 'monospace'],
+            sans: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0a0e1a; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+    .card { background: #0f1629; border: 1px solid #1e2d4f; border-radius: 12px; }
+    .num { font-family: 'JetBrains Mono', monospace; }
+    .gain { color: #10b981; }
+    .loss { color: #ef4444; }
+    .warn { color: #f59e0b; }
+    .brand { color: #3b82f6; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: #0f1629; }
+    ::-webkit-scrollbar-thumb { background: #1e2d4f; border-radius: 2px; }
+    .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.5 } }
+    .fade-in { animation: fadeIn 0.4s ease-in; }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }
+    .confidence-ring { transition: stroke-dashoffset 1s ease-in-out; }
+    .badge { border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; }
+    .badge-primary { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+    .badge-secondary { background: rgba(139,92,246,0.15); color: #a78bfa; border: 1px solid rgba(139,92,246,0.3); }
+    .badge-watchlist { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+    .badge-hold { background: rgba(59,130,246,0.15); color: #60a5fa; }
+    .badge-sell { background: rgba(239,68,68,0.15); color: #f87171; }
+    .badge-buy_more { background: rgba(16,185,129,0.15); color: #34d399; }
+    .badge-average_down { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .tab { cursor: pointer; padding: 8px 16px; border-radius: 8px; transition: all 0.2s; font-size: 14px; }
+    .tab.active { background: rgba(59,130,246,0.2); color: #60a5fa; }
+    .tab:hover:not(.active) { background: rgba(255,255,255,0.05); }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- Top Bar -->
+<div style="background:#0f1629; border-bottom:1px solid #1e2d4f;" class="sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <div style="width:8px;height:8px;background:#3b82f6;border-radius:50%;box-shadow:0 0 8px #3b82f6;" class="pulse"></div>
+    <span class="text-white font-semibold tracking-wide">AutoInvestor AI</span>
+    <span class="text-slate-500 text-sm">Intelligence System</span>
+  </div>
+  <div class="flex items-center gap-6">
+    <div id="nasdaq-bar" class="flex items-center gap-4 text-sm num"></div>
+    <div id="market-status" class="badge"></div>
+    <button onclick="refreshAll()" class="text-slate-400 hover:text-white transition-colors text-xs px-3 py-1 rounded border border-slate-700 hover:border-slate-500">↻ Refresh</button>
+  </div>
+</div>
+
+<!-- Nav Tabs -->
+<div style="background:#0f1629; border-bottom:1px solid #1e2d4f;" class="px-6 py-2 flex gap-2">
+  <div class="tab active" onclick="showTab('dashboard')">📊 Dashboard</div>
+  <div class="tab" onclick="showTab('picks')">⚡ Tonight's Picks</div>
+  <div class="tab" onclick="showTab('portfolio')">💼 Portfolio</div>
+  <div class="tab" onclick="showTab('news')">📰 News & Sentiment</div>
+  <div class="tab" onclick="showTab('analytics')">📈 Analytics</div>
+</div>
+
+<div class="p-6 max-w-screen-2xl mx-auto">
+
+  <!-- DASHBOARD TAB -->
+  <div id="tab-dashboard" class="fade-in">
+    <!-- Market Overview Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6" id="market-overview"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
+      <!-- Best Trade Hero -->
+      <div class="lg:col-span-3 card p-6" id="best-trade-panel">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-yellow-400 text-lg">⚡</span>
+          <span class="text-slate-400 text-sm font-medium uppercase tracking-wider">Best Setup for Tomorrow</span>
+        </div>
+        <div id="best-trade-content" class="flex items-center justify-center h-40">
+          <div class="pulse text-slate-600">Loading predictions...</div>
+        </div>
+      </div>
+
+      <!-- Conviction Meter -->
+      <div class="lg:col-span-2 card p-6 flex flex-col items-center justify-center">
+        <div class="text-slate-400 text-xs uppercase tracking-wider mb-4">Conviction Score</div>
+        <div id="conviction-meter" class="flex items-center justify-center">
+          <svg width="160" height="160" viewBox="0 0 160 160">
+            <circle cx="80" cy="80" r="65" fill="none" stroke="#1e2d4f" stroke-width="12"/>
+            <circle id="conviction-ring" cx="80" cy="80" r="65" fill="none" stroke="#3b82f6" stroke-width="12"
+              stroke-linecap="round" stroke-dasharray="408.4" stroke-dashoffset="408.4"
+              transform="rotate(-90 80 80)" class="confidence-ring"/>
+            <text x="80" y="75" text-anchor="middle" fill="white" font-size="28" font-weight="700" font-family="JetBrains Mono">
+              <tspan id="conviction-value">--</tspan>
+            </text>
+            <text x="80" y="98" text-anchor="middle" fill="#64748b" font-size="11" font-family="Inter">CONFIDENCE</text>
+          </svg>
+        </div>
+        <div id="conviction-label" class="text-slate-500 text-sm mt-2">Awaiting scan...</div>
+      </div>
+    </div>
+
+    <!-- AI Picks Table Preview -->
+    <div class="card p-6">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <span class="text-blue-400">🤖</span>
+          <span class="text-white font-medium">AI Stock Picks</span>
+        </div>
+        <button onclick="triggerScan()" class="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-all">
+          Run Full Scan ↗
+        </button>
+      </div>
+      <div id="picks-table-preview" class="text-slate-500 text-sm">Loading...</div>
+    </div>
+  </div>
+
+  <!-- PICKS TAB -->
+  <div id="tab-picks" class="hidden fade-in">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-semibold text-white">Tonight's AI Recommendations</h2>
+      <div class="flex gap-2">
+        <button onclick="triggerScan()" id="scan-btn" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-all">
+          🔍 Run Full NASDAQ Scan
+        </button>
+      </div>
+    </div>
+    <div id="picks-full" class="space-y-4">
+      <div class="card p-8 flex items-center justify-center text-slate-500">
+        Click "Run Full NASDAQ Scan" to generate tonight's AI picks
+      </div>
+    </div>
+  </div>
+
+  <!-- PORTFOLIO TAB -->
+  <div id="tab-portfolio" class="hidden fade-in">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-xl font-semibold text-white">Active Portfolio</h2>
+      <button onclick="showAddHolding()" class="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-all">
+        + Add Holding
+      </button>
+    </div>
+    <div id="portfolio-metrics" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
+    <div id="holdings-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+  </div>
+
+  <!-- NEWS TAB -->
+  <div id="tab-news" class="hidden fade-in">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2">
+        <h2 class="text-lg font-semibold text-white mb-4">Latest Market News</h2>
+        <div id="news-feed" class="space-y-3"></div>
+      </div>
+      <div>
+        <h2 class="text-lg font-semibold text-white mb-4">Market Sentiment</h2>
+        <div class="card p-6" id="sentiment-panel"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ANALYTICS TAB -->
+  <div id="tab-analytics" class="hidden fade-in">
+    <h2 class="text-xl font-semibold text-white mb-6">AI Learning Engine</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6" id="analytics-stats"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="card p-6">
+        <div class="text-white font-medium mb-4">Signal Performance</div>
+        <canvas id="signal-chart" height="200"></canvas>
+      </div>
+      <div class="card p-6">
+        <div class="text-white font-medium mb-4">Prediction History</div>
+        <canvas id="history-chart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Holding Modal -->
+<div id="add-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+  <div class="card p-8 w-full max-w-md mx-4">
+    <div class="flex justify-between items-center mb-6">
+      <h3 class="text-white font-semibold text-lg">Add Holding</h3>
+      <button onclick="closeModal()" class="text-slate-500 hover:text-white text-xl">✕</button>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <label class="text-slate-400 text-sm mb-1 block">Ticker Symbol</label>
+        <input id="h-ticker" placeholder="AAPL" style="background:#141c35;border:1px solid #1e2d4f"
+          class="w-full rounded-lg px-4 py-2.5 text-white num uppercase focus:outline-none focus:border-blue-500" />
+      </div>
+      <div>
+        <label class="text-slate-400 text-sm mb-1 block">Shares</label>
+        <input id="h-shares" type="number" placeholder="100" style="background:#141c35;border:1px solid #1e2d4f"
+          class="w-full rounded-lg px-4 py-2.5 text-white num focus:outline-none focus:border-blue-500" />
+      </div>
+      <div>
+        <label class="text-slate-400 text-sm mb-1 block">Purchase Price ($)</label>
+        <input id="h-price" type="number" step="0.01" placeholder="150.00" style="background:#141c35;border:1px solid #1e2d4f"
+          class="w-full rounded-lg px-4 py-2.5 text-white num focus:outline-none focus:border-blue-500" />
+      </div>
+      <div>
+        <label class="text-slate-400 text-sm mb-1 block">Notes (optional)</label>
+        <input id="h-notes" placeholder="Why you bought this..." style="background:#141c35;border:1px solid #1e2d4f"
+          class="w-full rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500" />
+      </div>
+      <button onclick="submitHolding()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all">
+        Add to Portfolio
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let allPredictions = [];
+let priceChart = null, signalChart = null, histChart = null;
+
+// ── Utility ────────────────────────────────────────────────────────────────
+const fmt = (n, d=2) => n == null ? '--' : Number(n).toFixed(d);
+const fmtK = n => n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(0)+'K' : String(n);
+const signColor = v => v > 0 ? 'gain' : v < 0 ? 'loss' : 'text-slate-400';
+const sign = v => v > 0 ? '+' : '';
+
+function showTab(name) {
+  document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('hidden'));
+  document.getElementById('tab-' + name).classList.remove('hidden');
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  if (name === 'news') loadNews();
+  if (name === 'analytics') loadAnalytics();
+  if (name === 'portfolio') loadPortfolio();
+  if (name === 'picks') loadPredictions();
+}
+
+// ── Market Overview ────────────────────────────────────────────────────────
+async function loadMarketOverview() {
+  try {
+    const res = await fetch(API + '/api/charts/market-overview');
+    const data = await res.json();
+    const nasdaq = data.nasdaq_change_pct || 0;
+    const spy = data.spy_change_pct || 0;
+    const vix = data.vix || 20;
+
+    document.getElementById('nasdaq-bar').innerHTML = `
+      <span class="text-slate-500">NASDAQ</span>
+      <span class="num ${signColor(nasdaq)}">${sign(nasdaq)}${fmt(nasdaq)}%</span>
+      <span class="text-slate-500">SPY</span>
+      <span class="num ${signColor(spy)}">${sign(spy)}${fmt(spy)}%</span>
+      <span class="text-slate-500">VIX</span>
+      <span class="num ${vix > 25 ? 'loss' : vix > 18 ? 'warn' : 'gain'}">${fmt(vix,1)}</span>
+    `;
+
+    const isOpen = isMarketOpen();
+    document.getElementById('market-status').className = `badge ${isOpen ? 'badge-primary' : 'badge-watchlist'}`;
+    document.getElementById('market-status').textContent = isOpen ? 'MARKET OPEN' : 'MARKET CLOSED';
+
+    const sectors = data.sector_performance || {};
+    const overviewEl = document.getElementById('market-overview');
+    overviewEl.innerHTML = [
+      { label: 'NASDAQ', val: nasdaq },
+      { label: 'S&P 500', val: spy },
+      { label: 'VIX', val: vix, raw: true },
+      ...Object.entries(sectors).slice(0, 3).map(([k, v]) => ({ label: k.split(' ')[0], val: v }))
+    ].map(item => `
+      <div class="card p-3 text-center">
+        <div class="text-slate-500 text-xs mb-1">${item.label}</div>
+        <div class="num text-lg font-semibold ${item.raw ? (item.val>25?'loss':item.val>18?'warn':'gain') : signColor(item.val)}">
+          ${item.raw ? fmt(item.val,1) : sign(item.val)+fmt(item.val)+'%'}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('market-status').textContent = 'OFFLINE';
+    document.getElementById('market-status').className = 'badge badge-sell';
+  }
+}
+
+function isMarketOpen() {
+  const now = new Date();
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const day = et.getDay();
+  const h = et.getHours(), m = et.getMinutes();
+  const mins = h * 60 + m;
+  return day >= 1 && day <= 5 && mins >= 570 && mins <= 960;
+}
+
+// ── Predictions ────────────────────────────────────────────────────────────
+async function loadPredictions() {
+  try {
+    const res = await fetch(API + '/api/predictions/tonight');
+    const data = await res.json();
+
+    if (data.no_trade_day || !data.predictions?.length) {
+      renderNoTradeDay(data.message);
+      return;
+    }
+    allPredictions = data.predictions;
+    renderBestTrade(data.predictions[0]);
+    renderPicksTable(data.predictions);
+    renderPicksFull(data.predictions);
+  } catch(e) {
+    document.getElementById('best-trade-content').innerHTML =
+      '<div class="text-slate-600 text-sm">API unavailable — press Run in VS Code first</div>';
+  }
+}
+
+function renderNoTradeDay(msg) {
+  document.getElementById('best-trade-content').innerHTML = `
+    <div class="text-center py-6">
+      <div class="text-4xl mb-3">🛡️</div>
+      <div class="text-white font-semibold text-lg mb-2">No Strong Setup Detected</div>
+      <div class="text-slate-400 text-sm max-w-xs mx-auto">${msg || 'Confidence thresholds not met. Protecting capital is a valid decision.'}</div>
+    </div>`;
+  setConviction(0);
+}
+
+function renderBestTrade(p) {
+  if (!p) return;
+  const riskColors = { low: 'gain', medium: 'warn', high: 'loss' };
+  const holdColors = { overnight: 'badge-primary', '2-5 days': 'badge-secondary', '1 week': 'badge-watchlist' };
+  document.getElementById('best-trade-content').innerHTML = `
+    <div class="fade-in">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <div class="flex items-center gap-3 mb-1">
+            <span class="text-3xl font-bold text-white num">${p.ticker}</span>
+            <span class="badge badge-primary">${p.recommendation_type?.toUpperCase()}</span>
+          </div>
+          <div class="text-slate-400 text-sm">${p.company_name || ''} · ${p.sector || ''}</div>
+        </div>
+        <div class="text-right">
+          <div class="num text-2xl font-bold ${p.expected_move_pct >= 0 ? 'gain' : 'loss'}">
+            ${sign(p.expected_move_pct)}${fmt(p.expected_move_pct)}%
+          </div>
+          <div class="text-slate-500 text-xs">expected move</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="rounded-lg p-3" style="background:#141c35">
+          <div class="text-slate-500 text-xs mb-1">Entry Zone</div>
+          <div class="num text-sm text-white">${fmt(p.entry_zone_low)} – ${fmt(p.entry_zone_high)}</div>
+        </div>
+        <div class="rounded-lg p-3" style="background:#141c35">
+          <div class="text-slate-500 text-xs mb-1">Stop Loss</div>
+          <div class="num text-sm loss">${fmt(p.stop_loss)}</div>
+        </div>
+        <div class="rounded-lg p-3" style="background:#141c35">
+          <div class="text-slate-500 text-xs mb-1">Target 1 / 2</div>
+          <div class="num text-sm gain">${fmt(p.profit_target_1)} / ${fmt(p.profit_target_2)}</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 mb-3">
+        <span class="badge ${holdColors[p.expected_hold_duration] || 'badge-watchlist'}">${p.expected_hold_duration}</span>
+        <span class="badge badge-${riskColors[p.risk_rating] || 'medium'}" style="background:none;border:1px solid currentColor">${p.risk_rating?.toUpperCase()} RISK</span>
+        ${(p.signal_types||[]).map(s => `<span class="badge" style="background:rgba(99,102,241,0.1);color:#818cf8;border:1px solid rgba(99,102,241,0.2)">${s}</span>`).join('')}
+      </div>
+
+      <div class="text-slate-300 text-sm leading-relaxed rounded-lg p-3" style="background:#141c35">
+        ${p.plain_english_explanation}
+      </div>
+    </div>`;
+
+  setConviction(p.confidence_score);
+}
+
+function setConviction(score) {
+  const circumference = 408.4;
+  const offset = circumference - (score / 100) * circumference;
+  const ring = document.getElementById('conviction-ring');
+  const val = document.getElementById('conviction-value');
+  const label = document.getElementById('conviction-label');
+  if (!ring) return;
+  ring.style.strokeDashoffset = offset;
+  ring.style.stroke = score >= 80 ? '#10b981' : score >= 65 ? '#3b82f6' : score >= 40 ? '#f59e0b' : '#ef4444';
+  val.textContent = score ? Math.round(score) : '--';
+  label.textContent = score >= 80 ? 'HIGH CONVICTION' : score >= 65 ? 'MODERATE' : score > 0 ? 'LOW' : 'No Setup';
+  label.style.color = score >= 80 ? '#10b981' : score >= 65 ? '#3b82f6' : '#f59e0b';
+}
+
+function renderPicksTable(predictions) {
+  const el = document.getElementById('picks-table-preview');
+  if (!predictions.length) { el.innerHTML = '<div class="text-slate-600">No picks yet</div>'; return; }
+  el.innerHTML = `
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-800 text-slate-500 text-xs uppercase">
+            <th class="pb-2 text-left">Ticker</th>
+            <th class="pb-2 text-left">Type</th>
+            <th class="pb-2 text-right">Confidence</th>
+            <th class="pb-2 text-right">Expected Move</th>
+            <th class="pb-2 text-left">Catalyst</th>
+            <th class="pb-2 text-left">Hold</th>
+            <th class="pb-2 text-left">Risk</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-800/50">
+          ${predictions.map(p => `
+            <tr class="hover:bg-white/2 transition-colors">
+              <td class="py-2.5 num font-semibold text-white">${p.ticker}</td>
+              <td class="py-2.5"><span class="badge badge-${p.recommendation_type}">${p.recommendation_type}</span></td>
+              <td class="py-2.5 text-right">
+                <div class="flex items-center justify-end gap-2">
+                  <div style="width:60px;height:4px;background:#1e2d4f;border-radius:2px;overflow:hidden">
+                    <div style="width:${p.confidence_score}%;height:100%;background:${p.confidence_score>=80?'#10b981':p.confidence_score>=65?'#3b82f6':'#f59e0b'};border-radius:2px"></div>
+                  </div>
+                  <span class="num text-white">${fmt(p.confidence_score,0)}%</span>
+                </div>
+              </td>
+              <td class="py-2.5 text-right num ${signColor(p.expected_move_pct)}">${sign(p.expected_move_pct)}${fmt(p.expected_move_pct)}%</td>
+              <td class="py-2.5 text-slate-400 max-w-xs truncate">${p.catalyst_summary}</td>
+              <td class="py-2.5 text-slate-300">${p.expected_hold_duration}</td>
+              <td class="py-2.5 text-${p.risk_rating==='low'?'gain':p.risk_rating==='high'?'loss':'warn'}">${p.risk_rating}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderPicksFull(predictions) {
+  const el = document.getElementById('picks-full');
+  if (!el) return;
+  el.innerHTML = predictions.map(p => `
+    <div class="card p-6 fade-in">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <div class="flex items-center gap-3">
+            <span class="text-2xl font-bold text-white num">${p.ticker}</span>
+            <span class="badge badge-${p.recommendation_type}">${p.recommendation_type?.toUpperCase()}</span>
+            <span class="num text-lg font-semibold ${signColor(p.expected_move_pct)}">${sign(p.expected_move_pct)}${fmt(p.expected_move_pct)}%</span>
+          </div>
+          <div class="text-slate-400 text-sm mt-1">${p.company_name||''}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-3xl font-bold num text-white">${fmt(p.confidence_score,0)}<span class="text-slate-500 text-lg">%</span></div>
+          <div class="text-slate-500 text-xs">confidence</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div class="rounded-lg p-3" style="background:#141c35"><div class="text-slate-500 text-xs mb-1">Entry</div><div class="num text-sm text-white">${fmt(p.entry_zone_low)}–${fmt(p.entry_zone_high)}</div></div>
+        <div class="rounded-lg p-3" style="background:#141c35"><div class="text-slate-500 text-xs mb-1">Stop Loss</div><div class="num text-sm loss">${fmt(p.stop_loss)}</div></div>
+        <div class="rounded-lg p-3" style="background:#141c35"><div class="text-slate-500 text-xs mb-1">Target 1</div><div class="num text-sm gain">${fmt(p.profit_target_1)}</div></div>
+        <div class="rounded-lg p-3" style="background:#141c35"><div class="text-slate-500 text-xs mb-1">Target 2</div><div class="num text-sm gain">${fmt(p.profit_target_2)}</div></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-sm">
+        <div class="text-slate-400"><span class="text-slate-500">Technical:</span> ${p.technical_summary}</div>
+        <div class="text-slate-400"><span class="text-slate-500">Sentiment:</span> ${p.sentiment_summary}</div>
+        <div class="text-slate-400"><span class="text-slate-500">Hold:</span> ${p.expected_hold_duration} · <span class="text-${p.risk_rating==='low'?'gain':p.risk_rating==='high'?'loss':'warn'}">${p.risk_rating} risk</span></div>
+      </div>
+
+      <div class="rounded-lg p-4 text-slate-300 text-sm leading-relaxed" style="background:#141c35">
+        ${p.plain_english_explanation}
+      </div>
+    </div>`).join('');
+}
+
+async function triggerScan() {
+  const btn = document.getElementById('scan-btn');
+  if (btn) { btn.textContent = '⏳ Scanning NASDAQ...'; btn.disabled = true; }
+  try {
+    await fetch(API + '/api/predictions/scan', { method: 'POST' });
+    document.getElementById('picks-full').innerHTML = `
+      <div class="card p-8 text-center">
+        <div class="pulse text-blue-400 text-lg mb-2">🔍 Scanning NASDAQ...</div>
+        <div class="text-slate-400 text-sm">Analysing 80 stocks. Results in ~2 minutes.</div>
+        <div class="text-slate-600 text-xs mt-2">The page will auto-refresh.</div>
+      </div>`;
+    setTimeout(() => { loadPredictions(); if(btn){btn.textContent='🔍 Run Full NASDAQ Scan';btn.disabled=false;} }, 90000);
+  } catch(e) {
+    if (btn) { btn.textContent = '🔍 Run Full NASDAQ Scan'; btn.disabled = false; }
+  }
+}
+
+// ── Portfolio ──────────────────────────────────────────────────────────────
+async function loadPortfolio() {
+  try {
+    const [metricsRes, holdingsRes] = await Promise.all([
+      fetch(API + '/api/portfolio/metrics'),
+      fetch(API + '/api/portfolio/holdings'),
+    ]);
+    const metrics = await metricsRes.json();
+    const { holdings } = await holdingsRes.json();
+    renderPortfolioMetrics(metrics);
+    renderHoldings(holdings);
+  } catch(e) {
+    document.getElementById('holdings-grid').innerHTML = '<div class="col-span-3 text-slate-600 text-sm">Error loading portfolio</div>';
+  }
+}
+
+function renderPortfolioMetrics(m) {
+  document.getElementById('portfolio-metrics').innerHTML = [
+    { label: 'Total Value', val: '$' + fmt(m.total_current_value), cls: 'text-white' },
+    { label: 'Invested', val: '$' + fmt(m.total_invested), cls: 'text-white' },
+    { label: 'Unrealised P&L', val: (m.total_unrealized_pnl >= 0 ? '+' : '') + '$' + fmt(m.total_unrealized_pnl) + ' (' + (m.total_unrealized_pnl_pct >= 0 ? '+' : '') + fmt(m.total_unrealized_pnl_pct) + '%)', cls: signColor(m.total_unrealized_pnl) },
+    { label: 'Win Rate', val: fmt(m.win_rate, 1) + '%', cls: m.win_rate >= 55 ? 'gain' : m.win_rate >= 45 ? 'warn' : 'loss' },
+  ].map(item => `
+    <div class="card p-4">
+      <div class="text-slate-500 text-xs mb-1">${item.label}</div>
+      <div class="num text-xl font-semibold ${item.cls}">${item.val}</div>
+    </div>`).join('');
+}
+
+function renderHoldings(holdings) {
+  const el = document.getElementById('holdings-grid');
+  if (!holdings.length) {
+    el.innerHTML = '<div class="col-span-3 card p-8 text-center text-slate-500"><div class="text-3xl mb-2">💼</div>No holdings yet. Click "Add Holding" to track a position.</div>';
+    return;
+  }
+  const recLabels = { hold: 'HOLD', sell: 'SELL', buy_more: 'BUY MORE', average_down: 'AVG DOWN' };
+  el.innerHTML = holdings.map(h => `
+    <div class="card p-5 fade-in">
+      <div class="flex justify-between items-start mb-3">
+        <div>
+          <div class="text-xl font-bold num text-white">${h.ticker}</div>
+          <div class="text-slate-500 text-xs">${fmt(h.shares)} shares @ $${fmt(h.purchase_price)}</div>
+        </div>
+        <span class="badge badge-${h.ai_recommendation}">${recLabels[h.ai_recommendation]||h.ai_recommendation}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        <div><div class="text-slate-500 text-xs">Current Price</div><div class="num font-semibold text-white">$${fmt(h.current_price)}</div></div>
+        <div><div class="text-slate-500 text-xs">Unrealised P&L</div>
+          <div class="num font-semibold ${signColor(h.unrealized_pnl)}">
+            ${sign(h.unrealized_pnl)}$${fmt(Math.abs(h.unrealized_pnl))} (${sign(h.unrealized_pnl_pct)}${fmt(h.unrealized_pnl_pct)}%)
+          </div>
+        </div>
+      </div>
+      <div class="mb-3">
+        <div class="flex justify-between text-xs mb-1"><span class="text-slate-500">Conviction</span><span class="num text-slate-300">${fmt(h.conviction_score, 0)}%</span></div>
+        <div style="height:4px;background:#1e2d4f;border-radius:2px"><div style="width:${h.conviction_score||0}%;height:100%;background:#3b82f6;border-radius:2px;transition:width 0.5s"></div></div>
+      </div>
+      <div class="text-slate-400 text-xs leading-relaxed">${h.reasoning||''}</div>
+      <button onclick="closePosition(${h.id})" class="mt-3 w-full text-xs py-1.5 rounded border border-slate-700 text-slate-400 hover:border-red-500/50 hover:text-red-400 transition-all">
+        Close Position
+      </button>
+    </div>`).join('');
+}
+
+async function closePosition(id) {
+  const price = prompt('Enter sell price:');
+  if (!price) return;
+  await fetch(API + '/api/portfolio/holdings/' + id + '/close', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sell_price: parseFloat(price) })
+  });
+  loadPortfolio();
+}
+
+function showAddHolding() { document.getElementById('add-modal').classList.remove('hidden'); }
+function closeModal() { document.getElementById('add-modal').classList.add('hidden'); }
+
+async function submitHolding() {
+  const ticker = document.getElementById('h-ticker').value.toUpperCase().trim();
+  const shares = parseFloat(document.getElementById('h-shares').value);
+  const price = parseFloat(document.getElementById('h-price').value);
+  const notes = document.getElementById('h-notes').value;
+  if (!ticker || !shares || !price) return alert('Please fill in ticker, shares, and price.');
+  await fetch(API + '/api/portfolio/holdings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticker, shares, purchase_price: price, notes })
+  });
+  closeModal();
+  loadPortfolio();
+}
+
+// ── News ───────────────────────────────────────────────────────────────────
+async function loadNews() {
+  try {
+    const [newsRes, sentRes] = await Promise.all([
+      fetch(API + '/api/sentiment/news?limit=30'),
+      fetch(API + '/api/sentiment/market-overview'),
+    ]);
+    const { articles } = await newsRes.json();
+    const sentiment = await sentRes.json();
+    renderNews(articles);
+    renderSentimentPanel(sentiment);
+  } catch(e) {}
+}
+
+function sentimentBadge(score) {
+  if (score > 0.1) return '<span class="badge" style="background:rgba(16,185,129,0.1);color:#34d399;border:1px solid rgba(16,185,129,0.2)">+' + fmt(score, 2) + ' BULLISH</span>';
+  if (score < -0.1) return '<span class="badge" style="background:rgba(239,68,68,0.1);color:#f87171;border:1px solid rgba(239,68,68,0.2)">' + fmt(score, 2) + ' BEARISH</span>';
+  return '<span class="badge" style="background:rgba(100,116,139,0.1);color:#94a3b8;border:1px solid rgba(100,116,139,0.2)">' + fmt(score, 2) + ' NEUTRAL</span>';
+}
+
+function renderNews(articles) {
+  document.getElementById('news-feed').innerHTML = articles.map(a => `
+    <div class="card p-4 fade-in hover:border-slate-600 transition-colors cursor-pointer" onclick="window.open('${a.url||'#'}','_blank')">
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div class="text-white text-sm font-medium leading-snug flex-1">${a.headline}</div>
+        ${sentimentBadge(a.sentiment_score||0)}
+      </div>
+      <div class="text-slate-500 text-xs">${a.source} · ${new Date(a.published_at).toLocaleDateString()}</div>
+      ${a.tickers?.length ? '<div class="mt-1">' + a.tickers.map(t => `<span class="badge badge-primary mr-1">${t}</span>`).join('') + '</div>' : ''}
+    </div>`).join('');
+}
+
+function renderSentimentPanel(s) {
+  const el = document.getElementById('sentiment-panel');
+  const score = s.overall_sentiment || 0;
+  const label = s.sentiment_label || 'NEUTRAL';
+  el.innerHTML = `
+    <div class="text-center mb-6">
+      <div class="text-4xl mb-2">${label === 'BULLISH' ? '🟢' : label === 'BEARISH' ? '🔴' : '🟡'}</div>
+      <div class="num text-2xl font-bold ${label==='BULLISH'?'gain':label==='BEARISH'?'loss':'warn'}">${label}</div>
+      <div class="num text-slate-400 text-sm">${sign(score)}${fmt(score, 3)} overall</div>
+    </div>
+    <div class="space-y-3">
+      <div class="flex justify-between text-sm"><span class="text-slate-400">VIX</span><span class="num ${s.vix>25?'loss':s.vix>18?'warn':'gain'}">${fmt(s.vix, 1)}</span></div>
+      <div class="flex justify-between text-sm"><span class="text-slate-400">Market</span><span class="text-slate-300">${s.market_condition||'NORMAL'}</span></div>
+      <div class="flex justify-between text-sm"><span class="text-slate-400">NASDAQ</span><span class="num ${signColor(s.nasdaq_change_pct)}">${sign(s.nasdaq_change_pct)}${fmt(s.nasdaq_change_pct)}%</span></div>
+      <div class="flex justify-between text-sm"><span class="text-slate-400">Articles</span><span class="text-slate-300">${s.articles_analyzed}</span></div>
+    </div>`;
+}
+
+// ── Analytics ──────────────────────────────────────────────────────────────
+async function loadAnalytics() {
+  try {
+    const [winRes, sigRes] = await Promise.all([
+      fetch(API + '/api/analytics/win-rate'),
+      fetch(API + '/api/analytics/signal-performance'),
+    ]);
+    const win = await winRes.json();
+    const { signals } = await sigRes.json();
+    renderAnalyticsStats(win);
+    renderSignalChart(signals);
+  } catch(e) {}
+}
+
+function renderAnalyticsStats(w) {
+  document.getElementById('analytics-stats').innerHTML = [
+    { label: 'Win Rate', val: fmt(w.win_rate, 1) + '%', cls: w.win_rate >= 55 ? 'gain' : 'warn' },
+    { label: 'Total Predictions', val: w.total_predictions, cls: 'text-white' },
+    { label: 'Avg Confidence', val: fmt(w.avg_confidence, 1) + '%', cls: 'text-white' },
+  ].map(s => `
+    <div class="card p-5 text-center">
+      <div class="text-slate-500 text-sm mb-2">${s.label}</div>
+      <div class="num text-3xl font-bold ${s.cls}">${s.val}</div>
+    </div>`).join('');
+}
+
+function renderSignalChart(signals) {
+  const ctx = document.getElementById('signal-chart');
+  if (!ctx) return;
+  if (signalChart) signalChart.destroy();
+  signalChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: signals.map(s => s.name),
+      datasets: [
+        { label: 'Weight %', data: signals.map(s => s.weight), backgroundColor: signals.map(s => s.color + '60'), borderColor: signals.map(s => s.color), borderWidth: 1 },
+        { label: 'Win Rate %', data: signals.map(s => s.win_rate), backgroundColor: 'transparent', borderColor: '#94a3b8', borderWidth: 1, type: 'line', tension: 0.3 },
+      ]
+    },
+    options: { responsive: true, plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } }, scales: { x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: '#1e2d4f' } }, y: { ticks: { color: '#64748b' }, grid: { color: '#1e2d4f' } } } }
+  });
+}
+
+// ── WebSocket Live Updates ─────────────────────────────────────────────────
+function connectWS() {
+  try {
+    const ws = new WebSocket(`ws://localhost:${location.port || 8000}/ws/live`);
+    ws.onmessage = e => {
+      const d = JSON.parse(e.data);
+      if (d.nasdaq_change_pct !== undefined) {
+        loadMarketOverview();
+      }
+    };
+    ws.onerror = () => {};
+    ws.onclose = () => setTimeout(connectWS, 10000);
+  } catch(e) {}
+}
+
+async function refreshAll() {
+  await Promise.all([loadMarketOverview(), loadPredictions()]);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+(async function init() {
+  await loadMarketOverview();
+  await loadPredictions();
+  connectWS();
+  setInterval(loadMarketOverview, 60000);
+})();
+</script>
+</body>
+</html>
